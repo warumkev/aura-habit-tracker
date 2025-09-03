@@ -1,11 +1,19 @@
 import { state } from "../../main.js";
-import { getDocs, query, where, collection } from "firebase/firestore";
+import {
+  getDocs,
+  query,
+  where,
+  collection,
+  updateDoc,
+  doc,
+} from "firebase/firestore";
 import { db } from "../../firebase.js";
 import { openRoutineSelectionModal } from "../components/modals.js";
 import { openFormModal } from "../components/forms.js";
-import { deleteData, getDataDoc, updateData } from "../../data/firestore.js";
+import { deleteData, getDataDoc } from "../../data/firestore.js";
 
 const WEEKS_TO_SHOW = 10;
+let unsubscribeTimeline;
 
 export function renderHomeView(container) {
   container.innerHTML = `
@@ -24,6 +32,7 @@ export function renderHomeView(container) {
   setupDatePicker();
   loadDataForSelectedDate();
 
+  // Listen for data changes to reload the timeline
   document.addEventListener("dataChanged", loadDataForSelectedDate);
 }
 
@@ -107,7 +116,8 @@ async function setupDatePicker() {
                         </button>`;
                       })
                       .join("")}
-                </div>`
+                </div>
+            `
               )
               .join("")}
             </div>
@@ -160,7 +170,7 @@ async function loadDataForSelectedDate() {
       id: d.id,
       type: "appointment",
     }));
-    const todos = todoDocs.docs.map((d) => ({
+    let todos = todoDocs.docs.map((d) => ({
       ...d.data(),
       id: d.id,
       type: "todo",
@@ -174,6 +184,8 @@ async function loadDataForSelectedDate() {
     appointments.sort((a, b) =>
       (a.time || "00:00").localeCompare(b.time || "00:00")
     );
+
+    // Sort todos: incomplete first (by time), then complete
     todos.sort((a, b) => {
       if (a.isDone !== b.isDone) {
         return a.isDone ? 1 : -1;
@@ -191,48 +203,59 @@ async function loadDataForSelectedDate() {
 
 function calculateFreeTimeMessage(events) {
   if (events.length === 0) return "Dein Tag ist heute frei.";
-  const dayStart = 8 * 60;
-  const dayEnd = 22 * 60;
+
+  const dayStart = 8 * 60; // 8:00 AM
+  const dayEnd = 22 * 60; // 10:00 PM
+
   const timeToMinutes = (timeStr) => {
     if (!timeStr) return 0;
     const [hours, minutes] = timeStr.split(":").map(Number);
     return hours * 60 + minutes;
   };
+
   const minutesToTime = (minutes) => {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   };
+
   const busySlots = events
     .map((e) => ({
       start: timeToMinutes(e.time),
-      end: timeToMinutes(e.endTime || e.time) + (e.endTime ? 0 : 60), // Add 60min duration if no end time
+      end: timeToMinutes(e.endTime) || timeToMinutes(e.time) + 60,
     }))
     .sort((a, b) => a.start - b.start);
 
   let freeSlots = [];
   let lastBusyTime = dayStart;
+
   busySlots.forEach((slot) => {
     if (slot.start > lastBusyTime) {
       freeSlots.push({ start: lastBusyTime, end: slot.start });
     }
-    lastBusyTime = slot.end;
+    lastBusyTime = Math.max(lastBusyTime, slot.end);
   });
+
   if (dayEnd > lastBusyTime) {
     freeSlots.push({ start: lastBusyTime, end: dayEnd });
   }
+
   if (freeSlots.length === 0) return "Dein Tag ist ziemlich voll.";
+
   const longestSlot = freeSlots.reduce(
     (max, slot) => (slot.end - slot.start > max.end - max.start ? slot : max),
     { start: 0, end: 0 }
   );
+
   return `Deine längste freie Zeit ist von ${minutesToTime(
     longestSlot.start
   )} bis ${minutesToTime(longestSlot.end)}.`;
 }
 
 function renderSummary(container, appointments, todos, habits) {
-  const eventsWithTime = [...appointments, ...todos.filter((t) => t.time)];
+  const eventsWithTime = [...appointments, ...todos].filter(
+    (item) => item.time
+  );
   const freeTimeMessage = calculateFreeTimeMessage(eventsWithTime);
   const welcomeMessage = `Guten Morgen, ${
     state.userProfile.displayName || ""
@@ -267,6 +290,7 @@ function renderSummary(container, appointments, todos, habits) {
             <p class="text-sm mt-2" style="color: var(--text-secondary);">${freeTimeMessage}</p>
             <button id="apply-routine-btn" class="w-full mt-4 text-white p-2 rounded-lg text-sm font-semibold" style="background-color: var(--accent-color);">Routine anwenden</button>
         </div>`;
+
   document.getElementById("apply-routine-btn").onclick =
     openRoutineSelectionModal;
 }
@@ -299,60 +323,94 @@ function renderTimeline(container, appointments, todos, habits) {
 
 function renderTimelineItem(item) {
   const title = item.title || item.task || item.habitName;
-  let timeHTML;
+  let timeDisplay = "";
+  let icon;
 
-  if (item.type === "appointment" && item.time) {
-    timeHTML = `<div class="text-sm">${item.time}${
-      item.endTime ? " - " + item.endTime : ""
-    }</div>`;
-  } else if (item.time) {
-    timeHTML = `<div class="text-sm">${item.time}</div>`;
-  } else {
-    timeHTML = "";
-  }
+  const selectedDateStr = state.selectedDate.toISOString().split("T")[0];
 
-  let iconHTML;
-
-  if (item.type === "todo") {
-    iconHTML = `
-      <input 
-        type="checkbox" 
-        data-id="${item.id}" 
-        class="todo-checkbox h-6 w-6 rounded-lg border-2 cursor-pointer" 
-        style="border-color: var(--border-color); background-color: var(--bg-primary);"
-        ${item.isDone ? "checked" : ""}
-      />
-    `;
-  } else {
-    let iconSymbol = "";
-    switch (item.type) {
-      case "appointment":
-        iconSymbol = `☀️`;
-        break;
-      case "habit":
-        iconSymbol = `🔄`;
-        break;
+  // Build the display based on item type
+  if (item.type === "appointment") {
+    icon = "☀️";
+    if (item.time && item.endTime) {
+      timeDisplay = `<div class="text-sm" style="color: var(--text-secondary);">${item.time} - ${item.endTime}</div>`;
+    } else if (item.time) {
+      timeDisplay = `<div class="text-sm" style="color: var(--text-secondary);">${item.time}</div>`;
     }
-    iconHTML = `<div class="text-xl">${iconSymbol}</div>`;
+  } else if (item.type === "todo") {
+    icon = `
+            <input 
+                type="checkbox" 
+                data-id="${item.id}" 
+                class="todo-checkbox h-6 w-6 rounded-lg border-2" 
+                style="border-color: var(--border-color); background-color: var(--bg-primary);"
+                ${item.isDone ? "checked" : ""}
+            />`;
+    if (item.time) {
+      timeDisplay = `<div class="text-sm" style="color: var(--text-secondary);">${item.time}</div>`;
+    }
+  } else if (item.type === "habit") {
+    icon = "🔄";
+    const progress = item.dailyCompletions?.[selectedDateStr] || 0;
+    const goal = item.dailyGoal;
+    const streak = calculateStreak(item);
+    timeDisplay = `
+            <div class="flex flex-col items-end">
+                <div class="habit-progress">${progress}</div>
+                <div class="habit-streak">${streak} 🔥</div>
+            </div>
+        `;
   }
 
-  const contentExtraClass = item.isDone ? "task-done" : "";
+  const isDone =
+    item.isDone ||
+    (item.type === "habit" &&
+      (item.dailyCompletions?.[selectedDateStr] || 0) >= (item.dailyGoal || 1));
+  const doneClass = isDone ? "task-done" : "";
 
   return `<div class="timeline-list-item-wrapper">
                 <div class="timeline-list-item-actions">
-                    <div data-id="${item.id}" data-type="${item.type}" class="action-btn edit-btn">
+                     <div data-id="${item.id}" data-type="${
+    item.type
+  }" class="action-btn edit-btn">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z"></path></svg>
                     </div>
-                    <div data-id="${item.id}" data-type="${item.type}" class="action-btn delete-btn">
+                    <div data-id="${item.id}" data-type="${
+    item.type
+  }" class="action-btn delete-btn">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </div>
                 </div>
-                <div class="timeline-list-item-content ${contentExtraClass}">
-                    <div class="flex-shrink-0 w-8 flex items-center justify-center">${iconHTML}</div>
+                <div class="timeline-list-item-content ${
+                  item.type === "habit" ? "habit-item-content" : ""
+                } ${doneClass}" data-id="${item.id}" data-type="${item.type}">
+                    <div class="flex-shrink-0 w-8 flex items-center justify-center">${icon}</div>
                     <div class="flex-grow ml-2"><p class="font-medium">${title}</p></div>
-                    ${timeHTML}
+                    ${timeDisplay}
                 </div>
             </div>`;
+}
+
+function calculateStreak(habit) {
+  if (!habit.dailyCompletions) return 0;
+
+  let streak = 0;
+  // KORREKTUR: Startet die Überprüfung vom aktuell ausgewählten Datum.
+  let currentDate = new Date(state.selectedDate);
+  currentDate.setHours(0, 0, 0, 0);
+
+  while (true) {
+    const dateStr = currentDate.toISOString().split("T")[0];
+    const progress = habit.dailyCompletions[dateStr] || 0;
+    const goal = habit.dailyGoal || 1;
+
+    if (progress >= goal) {
+      streak++;
+      currentDate.setDate(currentDate.getDate() - 1); // Gehe zum Vortag
+    } else {
+      break; // Die Serie ist unterbrochen
+    }
+  }
+  return streak;
 }
 
 function setupTimelineListeners() {
@@ -363,12 +421,14 @@ function setupTimelineListeners() {
     let startX = 0,
       currentTranslate = 0,
       isDragging = false;
+
     const closeCurrentlyOpen = () => {
       if (state.currentlyOpenSwipeItem) {
         state.currentlyOpenSwipeItem.style.transform = "translateX(0)";
         state.currentlyOpenSwipeItem = null;
       }
     };
+
     item.addEventListener(
       "touchstart",
       (e) => {
@@ -389,6 +449,7 @@ function setupTimelineListeners() {
       },
       { passive: true }
     );
+
     item.addEventListener(
       "touchmove",
       (e) => {
@@ -400,12 +461,14 @@ function setupTimelineListeners() {
       },
       { passive: true }
     );
+
     item.addEventListener("touchend", () => {
       if (!isDragging) return;
       isDragging = false;
       item.style.transition = "transform 0.3s ease";
       const finalTranslate =
         parseInt(window.getComputedStyle(item).transform.split(",")[4]) || 0;
+
       if (finalTranslate < -SWIPE_THRESHOLD) {
         item.style.transform = `translateX(-${ACTION_WIDTH}px)`;
         state.currentlyOpenSwipeItem = item;
@@ -432,36 +495,12 @@ function setupTimelineListeners() {
     true
   );
 
-  document.querySelectorAll(".todo-checkbox").forEach((checkbox) => {
-    checkbox.addEventListener("change", async (e) => {
-      const todoId = e.target.dataset.id;
-      const isDone = e.target.checked;
-      const collectionPath = `users/${state.userId}/todos`;
-      const wrapper = e.target.closest(".timeline-list-item-wrapper");
-
-      await updateData(collectionPath, todoId, { isDone });
-
-      if (isDone) {
-        wrapper.classList.add("task-completing");
-        wrapper.addEventListener(
-          "animationend",
-          () => {
-            loadDataForSelectedDate();
-          },
-          { once: true }
-        );
-      } else {
-        loadDataForSelectedDate();
-      }
-    });
-  });
-
   document.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.onclick = async () => {
       const { id, type } = btn.dataset;
       const collectionName = type === "habit" ? "habits" : `${type}s`;
       await deleteData(`users/${state.userId}/${collectionName}`, id);
-      loadDataForSelectedDate();
+      document.dispatchEvent(new CustomEvent("dataChanged"));
     };
   });
 
@@ -477,5 +516,62 @@ function setupTimelineListeners() {
         openFormModal(type, { id, ...docSnap.data() });
       }
     };
+  });
+
+  // Listener for todo checkboxes
+  document.querySelectorAll(".todo-checkbox").forEach((checkbox) => {
+    checkbox.addEventListener("change", async (e) => {
+      const todoId = e.target.dataset.id;
+      const isDone = e.target.checked;
+      const collectionPath = `users/${state.userId}/todos`;
+
+      const itemWrapper = e.target.closest(".timeline-list-item-wrapper");
+      if (isDone) {
+        itemWrapper.classList.add("task-completing");
+        setTimeout(() => {
+          document.dispatchEvent(new CustomEvent("dataChanged"));
+        }, 400); // Wait for animation to finish
+      } else {
+        document.dispatchEvent(new CustomEvent("dataChanged"));
+      }
+
+      try {
+        await updateData(collectionPath, todoId, { isDone: isDone });
+      } catch (error) {
+        console.error("Failed to update todo:", error);
+        // Revert UI change on error
+        document.dispatchEvent(new CustomEvent("dataChanged"));
+      }
+    });
+  });
+
+  // Listener for habit clicks
+  document.querySelectorAll(".habit-item-content").forEach((item) => {
+    item.addEventListener("click", async (e) => {
+      const habitId = e.currentTarget.dataset.id;
+      const habitRef = doc(db, `users/${state.userId}/habits`, habitId);
+      const docSnap = await getDataDoc(`users/${state.userId}/habits`, habitId);
+
+      if (docSnap.exists()) {
+        const habit = docSnap.data();
+        const selectedDateStr = state.selectedDate.toISOString().split("T")[0];
+        const currentProgress = habit.dailyCompletions?.[selectedDateStr] || 0;
+        const goal = habit.dailyGoal || 1;
+
+        // KORREKTUR: Setzt den Fortschritt zurück, wenn das Ziel erreicht ist.
+        let newProgress;
+        if (currentProgress < goal) {
+          newProgress = currentProgress + 1;
+        } else {
+          newProgress = 0; // Zurücksetzen auf 0
+        }
+
+        const updateData = {
+          [`dailyCompletions.${selectedDateStr}`]: newProgress,
+        };
+        await updateDoc(habitRef, updateData);
+        document.dispatchEvent(new CustomEvent("dataChanged"));
+      }
+    });
   });
 }

@@ -24,6 +24,7 @@ function renderFormModal(content) {
   backdrop.classList.remove("hidden");
   setTimeout(() => backdrop.classList.add("active"), 10);
 
+  // Attach close listeners
   backdrop.querySelector(".close-form-btn").onclick = () =>
     closeModal("form-modal");
 }
@@ -47,26 +48,26 @@ export function openFormModal(formType, data = null) {
 
 export function setupAppointmentForm() {
   const content = `
-        <div class="space-y-6 p-4 max-w-lg mx-auto">
-            <div class="flex justify-between items-center">
-                <h2 class="text-3xl font-bold">${
-                  state.editingItem ? "Termin bearbeiten" : "Neuer Termin"
-                }</h2>
-                <button class="close-form-btn text-2xl">&times;</button>
-            </div>
-            <form id="appointment-form" class="space-y-3">
-                <input name="title" placeholder="Titel" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
-                <textarea name="description" placeholder="Beschreibung" class="w-full p-3 border rounded-lg h-24" style="background-color: var(--bg-primary); border-color: var(--border-color);"></textarea>
-                <input name="date" type="date" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
-                <div class="flex gap-4">
-                    <input name="time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required title="Startzeit"/>
-                    <input name="endTime" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" title="Endzeit"/>
-                </div>
-                <button type="submit" class="w-full text-white p-3 rounded-lg font-semibold" style="background-color: var(--accent-color);">${
-                  state.editingItem ? "Speichern" : "Hinzufügen"
-                }</button>
-            </form>
-        </div>`;
+          <div class="space-y-6 p-4 max-w-lg mx-auto">
+              <div class="flex justify-between items-center">
+                  <h2 class="text-3xl font-bold">${
+                    state.editingItem ? "Termin bearbeiten" : "Neuer Termin"
+                  }</h2>
+                  <button class="close-form-btn text-2xl">&times;</button>
+              </div>
+              <form id="appointment-form" class="space-y-3">
+                  <input name="title" placeholder="Titel" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
+                  <textarea name="description" placeholder="Beschreibung" class="w-full p-3 border rounded-lg h-24" style="background-color: var(--bg-primary); border-color: var(--border-color);"></textarea>
+                  <div class="flex gap-4">
+                      <input name="date" type="date" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
+                      <input name="time" type="time" placeholder="Startzeit" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
+                      <input name="endTime" type="time" placeholder="Endzeit" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" />
+                  </div>
+                  <button type="submit" class="w-full text-white p-3 rounded-lg font-semibold" style="background-color: var(--accent-color);">${
+                    state.editingItem ? "Speichern" : "Hinzufügen"
+                  }</button>
+              </form>
+          </div>`;
   renderFormModal(content);
 
   const form = document.getElementById("appointment-form");
@@ -75,7 +76,7 @@ export function setupAppointmentForm() {
     form.elements.description.value = state.editingItem.description || "";
     form.elements.date.value = state.editingItem.date || "";
     form.elements.time.value = state.editingItem.time || "";
-    form.elements.endTime.value = state.editingItem.endTime || ""; // Populate end time
+    form.elements.endTime.value = state.editingItem.endTime || "";
   } else {
     const now = new Date();
     form.elements.date.value = now.toISOString().split("T")[0];
@@ -86,13 +87,6 @@ export function setupAppointmentForm() {
     e.preventDefault();
     const formData = Object.fromEntries(new FormData(form).entries());
     if (!formData.title || !formData.date || !formData.time) return;
-
-    // Validation for end time
-    if (formData.endTime && formData.endTime < formData.time) {
-      // In a real app, show a proper error message instead of an alert
-      console.error("Endzeit kann nicht vor der Startzeit liegen.");
-      return;
-    }
 
     const collectionPath = `users/${state.userId}/appointments`;
     if (state.editingItem) {
@@ -160,39 +154,46 @@ export function setupTodoForm() {
 
 export function setupHabitForm() {
   const content = `
-        <div class="space-y-6 p-4 max-w-lg mx-auto">
-            <div class="flex justify-between items-center">
-                <h2 class="text-3xl font-bold">${
-                  state.editingItem
-                    ? "Gewohnheit bearbeiten"
-                    : "Neue Gewohnheit"
-                }</h2>
-                <button class="close-form-btn text-2xl">&times;</button>
-            </div>
-            <form id="habit-form" class="space-y-3">
-                <input name="habitName" placeholder="Gewohnheit" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required/>
-                <button type="submit" class="w-full text-white p-3 rounded-lg font-semibold" style="background-color: var(--accent-color);">${
-                  state.editingItem ? "Speichern" : "Hinzufügen"
-                }</button>
-            </form>
-        </div>`;
+          <div class="space-y-6 p-4 max-w-lg mx-auto">
+              <div class="flex justify-between items-center">
+                  <h2 class="text-3xl font-bold">${
+                    state.editingItem
+                      ? "Gewohnheit bearbeiten"
+                      : "Neue Gewohnheit"
+                  }</h2>
+                  <button class="close-form-btn text-2xl">&times;</button>
+              </div>
+              <form id="habit-form" class="space-y-3">
+                  <input name="habitName" placeholder="Gewohnheit" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required/>
+                  <input name="dailyGoal" type="number" min="1" placeholder="Tagesziel (z.B. 3 mal)" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required/>
+                  <button type="submit" class="w-full text-white p-3 rounded-lg font-semibold" style="background-color: var(--accent-color);">${
+                    state.editingItem ? "Speichern" : "Hinzufügen"
+                  }</button>
+              </form>
+          </div>`;
   renderFormModal(content);
 
   const form = document.getElementById("habit-form");
   if (state.editingItem) {
     form.elements.habitName.value = state.editingItem.habitName || "";
+    form.elements.dailyGoal.value = state.editingItem.dailyGoal || 1;
+  } else {
+    form.elements.dailyGoal.value = 1;
   }
 
   form.onsubmit = async (e) => {
     e.preventDefault();
     const habitName = form.elements.habitName.value;
+    const dailyGoal = parseInt(form.elements.dailyGoal.value) || 1;
     if (!habitName.trim()) return;
 
     const collectionPath = `users/${state.userId}/habits`;
+    const data = { habitName, dailyGoal };
+
     if (state.editingItem) {
-      await updateData(collectionPath, state.editingItem.id, { habitName });
+      await updateData(collectionPath, state.editingItem.id, data);
     } else {
-      await addData(collectionPath, { habitName, dailyCompletions: {} });
+      await addData(collectionPath, { ...data, dailyCompletions: {} });
     }
     state.editingItem = null;
     closeModal("form-modal");
@@ -213,16 +214,40 @@ export function setupRoutineItemForm() {
                     <option value="todo">Aufgabe</option>
                 </select>
                 <input name="title" placeholder="Titel" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required/>
-                <input name="time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);"/>
+                <div class="flex gap-2">
+                    <input name="time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" placeholder="Startzeit"/>
+                    <input name="endTime" id="routine-item-end-time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" placeholder="Endzeit"/>
+                </div>
                 <button type="submit" class="w-full p-2 rounded-lg text-sm font-semibold" style="background-color: var(--bg-primary); color: var(--text-primary);">Hinzufügen</button>
             </form>
         </div>`;
   renderFormModal(content);
 
   const form = document.getElementById("add-routine-item-form");
+  const typeSelect = form.elements.type;
+  const endTimeInput = document.getElementById("routine-item-end-time");
+
+  // Function to toggle endTime visibility
+  const toggleEndTime = () => {
+    if (typeSelect.value === "appointment") {
+      endTimeInput.classList.remove("hidden");
+    } else {
+      endTimeInput.classList.add("hidden");
+    }
+  };
+
+  // Initial check and event listener
+  toggleEndTime();
+  typeSelect.addEventListener("change", toggleEndTime);
+
   form.onsubmit = (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
+
+    if (data.type !== "appointment") {
+      delete data.endTime; // Ensure endTime is not present for todos
+    }
+
     document.dispatchEvent(new CustomEvent("addRoutineItem", { detail: data }));
     closeModal("form-modal");
   };

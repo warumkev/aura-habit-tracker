@@ -32,6 +32,16 @@ export function renderRoutineEditorView(container) {
   setupRoutineEditorListeners();
 }
 
+function getItemDisplay(item) {
+  let details = `(${item.type})`;
+  if (item.type === "appointment" && item.time && item.endTime) {
+    details = `(${item.time} - ${item.endTime})`;
+  } else if (item.time) {
+    details = `(${item.time})`;
+  }
+  return `<span>${item.title || item.task} ${details}</span>`;
+}
+
 function renderRoutineItems() {
   const itemsList = document.getElementById("routine-items-list");
   if (!itemsList) return;
@@ -39,7 +49,7 @@ function renderRoutineItems() {
     .map(
       (item, index) => `
         <div class="flex justify-between items-center p-2 rounded-lg" style="background-color: var(--bg-primary);">
-            <span>${item.title || item.task} (${item.type})</span>
+            ${getItemDisplay(item)}
             <button type="button" data-index="${index}" class="remove-item-btn text-red-500 font-bold">X</button>
         </div>
     `

@@ -19,25 +19,24 @@
   --accent-color: #ffffff;
 }
 /* --- Allgemeine Stile --- */
-html,
-body {
+html {
   height: 100%;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
 }
 body {
   font-family: "Inter", sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  position: relative; /* Stellt den Kontext für die fixe Navbar her */
+  min-height: 100%;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  margin: 0;
 }
 main#app-container {
   flex-grow: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 110px; /* Sicherer Abstand zur unteren Navigationsleiste */
 }
 [data-view] {
   display: none;
@@ -55,9 +54,13 @@ main#app-container {
   color: var(--accent-color);
 }
 nav#main-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   background-color: rgba(255, 255, 255, 0.8);
   border-color: var(--border-color);
-  z-index: 30; /* NEU: Stellt sicher, dass die Navbar über dem Inhalt liegt */
+  z-index: 1000;
 }
 .dark nav#main-nav {
   background-color: rgba(15, 15, 15, 0.8);
@@ -130,7 +133,7 @@ nav#main-nav {
   transition: transform 0.3s ease, background-color 0.3s ease;
   position: relative;
   z-index: 1;
-  touch-action: pan-y; /* Allow vertical scroll */
+  touch-action: pan-y;
 }
 .timeline-list-item-actions {
   position: absolute;
@@ -152,12 +155,12 @@ nav#main-nav {
 }
 .edit-btn {
   background-color: #3b82f6;
-} /* blue-500 */
+}
 .delete-btn {
   background-color: #ef4444;
-} /* red-500 */
+}
 
-/* --- Task Completion Styles & Animation --- */
+/* --- Task & Habit Completion Styles --- */
 @keyframes slideDown {
   from {
     opacity: 1;
@@ -182,9 +185,34 @@ nav#main-nav {
   color: var(--text-secondary) !important;
 }
 
+.habit-item-content {
+  cursor: pointer;
+}
+
+.habit-progress {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.habit-streak {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.habit-done {
+  background-color: var(--bg-secondary);
+}
+.habit-done .font-medium,
+.habit-done .habit-progress {
+  color: var(--text-secondary) !important;
+}
+
 /* --- Modal Stile --- */
 .modal-backdrop {
   background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1001; /* KORREKTUR: Stellt sicher, dass Modals über der Navbar liegen */
 }
 .modal-content {
   transform: translateY(100%);
