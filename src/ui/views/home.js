@@ -3,10 +3,9 @@ import { getDocs, query, where, collection } from "firebase/firestore";
 import { db } from "../../firebase.js";
 import { openRoutineSelectionModal } from "../components/modals.js";
 import { openFormModal } from "../components/forms.js";
-import { deleteData, getDataDoc } from "../../data/firestore.js";
+import { deleteData, getDataDoc, updateData } from "../../data/firestore.js";
 
 const WEEKS_TO_SHOW = 10;
-let unsubscribeTimeline;
 
 export function renderHomeView(container) {
   container.innerHTML = `
@@ -25,7 +24,6 @@ export function renderHomeView(container) {
   setupDatePicker();
   loadDataForSelectedDate();
 
-  // Listen for data changes to reload the timeline
   document.addEventListener("dataChanged", loadDataForSelectedDate);
 }
 
@@ -109,8 +107,7 @@ async function setupDatePicker() {
                         </button>`;
                       })
                       .join("")}
-                </div>
-            `
+                </div>`
               )
               .join("")}
             </div>
@@ -177,7 +174,12 @@ async function loadDataForSelectedDate() {
     appointments.sort((a, b) =>
       (a.time || "00:00").localeCompare(b.time || "00:00")
     );
-    todos.sort((a, b) => (a.time || "00:00").localeCompare(b.time || "00:00"));
+    todos.sort((a, b) => {
+      if (a.isDone !== b.isDone) {
+        return a.isDone ? 1 : -1;
+      }
+      return (a.time || "23:59").localeCompare(b.time || "23:59");
+    });
 
     renderSummary(summaryContainer, appointments, todos, habits);
     renderTimeline(timelineContainer, appointments, todos, habits);
@@ -189,55 +191,48 @@ async function loadDataForSelectedDate() {
 
 function calculateFreeTimeMessage(events) {
   if (events.length === 0) return "Dein Tag ist heute frei.";
-
-  const dayStart = 8 * 60; // 8:00 AM
-  const dayEnd = 22 * 60; // 10:00 PM
-
+  const dayStart = 8 * 60;
+  const dayEnd = 22 * 60;
   const timeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
     const [hours, minutes] = timeStr.split(":").map(Number);
     return hours * 60 + minutes;
   };
-
   const minutesToTime = (minutes) => {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   };
-
   const busySlots = events
-    .map((e) => timeToMinutes(e.time))
-    .sort((a, b) => a - b);
+    .map((e) => ({
+      start: timeToMinutes(e.time),
+      end: timeToMinutes(e.endTime || e.time) + (e.endTime ? 0 : 60), // Add 60min duration if no end time
+    }))
+    .sort((a, b) => a.start - b.start);
 
   let freeSlots = [];
   let lastBusyTime = dayStart;
-
   busySlots.forEach((slot) => {
-    if (slot > lastBusyTime) {
-      freeSlots.push({ start: lastBusyTime, end: slot });
+    if (slot.start > lastBusyTime) {
+      freeSlots.push({ start: lastBusyTime, end: slot.start });
     }
-    lastBusyTime = slot + 60; // Assume 1 hour duration for simplicity
+    lastBusyTime = slot.end;
   });
-
   if (dayEnd > lastBusyTime) {
     freeSlots.push({ start: lastBusyTime, end: dayEnd });
   }
-
   if (freeSlots.length === 0) return "Dein Tag ist ziemlich voll.";
-
   const longestSlot = freeSlots.reduce(
     (max, slot) => (slot.end - slot.start > max.end - max.start ? slot : max),
     { start: 0, end: 0 }
   );
-
   return `Deine längste freie Zeit ist von ${minutesToTime(
     longestSlot.start
   )} bis ${minutesToTime(longestSlot.end)}.`;
 }
 
 function renderSummary(container, appointments, todos, habits) {
-  const eventsWithTime = [...appointments, ...todos].filter(
-    (item) => item.time
-  );
+  const eventsWithTime = [...appointments, ...todos.filter((t) => t.time)];
   const freeTimeMessage = calculateFreeTimeMessage(eventsWithTime);
   const welcomeMessage = `Guten Morgen, ${
     state.userProfile.displayName || ""
@@ -272,7 +267,6 @@ function renderSummary(container, appointments, todos, habits) {
             <p class="text-sm mt-2" style="color: var(--text-secondary);">${freeTimeMessage}</p>
             <button id="apply-routine-btn" class="w-full mt-4 text-white p-2 rounded-lg text-sm font-semibold" style="background-color: var(--accent-color);">Routine anwenden</button>
         </div>`;
-
   document.getElementById("apply-routine-btn").onclick =
     openRoutineSelectionModal;
 }
@@ -300,26 +294,49 @@ function renderTimeline(container, appointments, todos, habits) {
   } else {
     container.innerHTML = `<div class="timeline-list-container">${timelineHTML}</div>`;
   }
-  setupSwipeListeners();
+  setupTimelineListeners();
 }
 
 function renderTimelineItem(item) {
   const title = item.title || item.task || item.habitName;
-  const time = item.time
-    ? `<div class="text-sm" style="color: var(--text-secondary);">${item.time}</div>`
-    : ``;
-  let icon;
-  switch (item.type) {
-    case "appointment":
-      icon = `☀️`;
-      break;
-    case "todo":
-      icon = `✅`;
-      break;
-    case "habit":
-      icon = `🔄`;
-      break;
+  let timeHTML;
+
+  if (item.type === "appointment" && item.time) {
+    timeHTML = `<div class="text-sm">${item.time}${
+      item.endTime ? " - " + item.endTime : ""
+    }</div>`;
+  } else if (item.time) {
+    timeHTML = `<div class="text-sm">${item.time}</div>`;
+  } else {
+    timeHTML = "";
   }
+
+  let iconHTML;
+
+  if (item.type === "todo") {
+    iconHTML = `
+      <input 
+        type="checkbox" 
+        data-id="${item.id}" 
+        class="todo-checkbox h-6 w-6 rounded-lg border-2 cursor-pointer" 
+        style="border-color: var(--border-color); background-color: var(--bg-primary);"
+        ${item.isDone ? "checked" : ""}
+      />
+    `;
+  } else {
+    let iconSymbol = "";
+    switch (item.type) {
+      case "appointment":
+        iconSymbol = `☀️`;
+        break;
+      case "habit":
+        iconSymbol = `🔄`;
+        break;
+    }
+    iconHTML = `<div class="text-xl">${iconSymbol}</div>`;
+  }
+
+  const contentExtraClass = item.isDone ? "task-done" : "";
 
   return `<div class="timeline-list-item-wrapper">
                 <div class="timeline-list-item-actions">
@@ -330,15 +347,15 @@ function renderTimelineItem(item) {
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </div>
                 </div>
-                <div class="timeline-list-item-content">
-                    <div class="flex-shrink-0 w-8 text-xl">${icon}</div>
+                <div class="timeline-list-item-content ${contentExtraClass}">
+                    <div class="flex-shrink-0 w-8 flex items-center justify-center">${iconHTML}</div>
                     <div class="flex-grow ml-2"><p class="font-medium">${title}</p></div>
-                    ${time}
+                    ${timeHTML}
                 </div>
             </div>`;
 }
 
-function setupSwipeListeners() {
+function setupTimelineListeners() {
   const ACTION_WIDTH = 160;
   const SWIPE_THRESHOLD = ACTION_WIDTH / 3;
 
@@ -346,14 +363,12 @@ function setupSwipeListeners() {
     let startX = 0,
       currentTranslate = 0,
       isDragging = false;
-
     const closeCurrentlyOpen = () => {
       if (state.currentlyOpenSwipeItem) {
         state.currentlyOpenSwipeItem.style.transform = "translateX(0)";
         state.currentlyOpenSwipeItem = null;
       }
     };
-
     item.addEventListener(
       "touchstart",
       (e) => {
@@ -374,7 +389,6 @@ function setupSwipeListeners() {
       },
       { passive: true }
     );
-
     item.addEventListener(
       "touchmove",
       (e) => {
@@ -386,14 +400,12 @@ function setupSwipeListeners() {
       },
       { passive: true }
     );
-
     item.addEventListener("touchend", () => {
       if (!isDragging) return;
       isDragging = false;
       item.style.transition = "transform 0.3s ease";
       const finalTranslate =
         parseInt(window.getComputedStyle(item).transform.split(",")[4]) || 0;
-
       if (finalTranslate < -SWIPE_THRESHOLD) {
         item.style.transform = `translateX(-${ACTION_WIDTH}px)`;
         state.currentlyOpenSwipeItem = item;
@@ -419,6 +431,30 @@ function setupSwipeListeners() {
     },
     true
   );
+
+  document.querySelectorAll(".todo-checkbox").forEach((checkbox) => {
+    checkbox.addEventListener("change", async (e) => {
+      const todoId = e.target.dataset.id;
+      const isDone = e.target.checked;
+      const collectionPath = `users/${state.userId}/todos`;
+      const wrapper = e.target.closest(".timeline-list-item-wrapper");
+
+      await updateData(collectionPath, todoId, { isDone });
+
+      if (isDone) {
+        wrapper.classList.add("task-completing");
+        wrapper.addEventListener(
+          "animationend",
+          () => {
+            loadDataForSelectedDate();
+          },
+          { once: true }
+        );
+      } else {
+        loadDataForSelectedDate();
+      }
+    });
+  });
 
   document.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.onclick = async () => {

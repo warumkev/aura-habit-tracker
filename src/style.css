@@ -57,6 +57,7 @@ main#app-container {
 nav#main-nav {
   background-color: rgba(255, 255, 255, 0.8);
   border-color: var(--border-color);
+  z-index: 30; /* NEU: Stellt sicher, dass die Navbar über dem Inhalt liegt */
 }
 .dark nav#main-nav {
   background-color: rgba(15, 15, 15, 0.8);
@@ -126,7 +127,7 @@ nav#main-nav {
   align-items: center;
   padding: 1rem;
   background-color: var(--bg-primary);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, background-color 0.3s ease;
   position: relative;
   z-index: 1;
   touch-action: pan-y; /* Allow vertical scroll */
@@ -155,6 +156,31 @@ nav#main-nav {
 .delete-btn {
   background-color: #ef4444;
 } /* red-500 */
+
+/* --- Task Completion Styles & Animation --- */
+@keyframes slideDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+}
+
+.task-completing {
+  animation: slideDown 0.4s ease-out forwards;
+}
+
+.task-done .font-medium {
+  text-decoration: line-through;
+}
+
+.task-done > *,
+.task-done .font-medium {
+  color: var(--text-secondary) !important;
+}
 
 /* --- Modal Stile --- */
 .modal-backdrop {

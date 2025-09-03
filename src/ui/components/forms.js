@@ -24,7 +24,6 @@ function renderFormModal(content) {
   backdrop.classList.remove("hidden");
   setTimeout(() => backdrop.classList.add("active"), 10);
 
-  // Attach close listeners
   backdrop.querySelector(".close-form-btn").onclick = () =>
     closeModal("form-modal");
 }
@@ -58,9 +57,10 @@ export function setupAppointmentForm() {
             <form id="appointment-form" class="space-y-3">
                 <input name="title" placeholder="Titel" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
                 <textarea name="description" placeholder="Beschreibung" class="w-full p-3 border rounded-lg h-24" style="background-color: var(--bg-primary); border-color: var(--border-color);"></textarea>
+                <input name="date" type="date" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
                 <div class="flex gap-4">
-                    <input name="date" type="date" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
-                    <input name="time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required />
+                    <input name="time" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" required title="Startzeit"/>
+                    <input name="endTime" type="time" class="w-full p-3 border rounded-lg" style="background-color: var(--bg-primary); border-color: var(--border-color);" title="Endzeit"/>
                 </div>
                 <button type="submit" class="w-full text-white p-3 rounded-lg font-semibold" style="background-color: var(--accent-color);">${
                   state.editingItem ? "Speichern" : "Hinzufügen"
@@ -75,6 +75,7 @@ export function setupAppointmentForm() {
     form.elements.description.value = state.editingItem.description || "";
     form.elements.date.value = state.editingItem.date || "";
     form.elements.time.value = state.editingItem.time || "";
+    form.elements.endTime.value = state.editingItem.endTime || ""; // Populate end time
   } else {
     const now = new Date();
     form.elements.date.value = now.toISOString().split("T")[0];
@@ -86,6 +87,13 @@ export function setupAppointmentForm() {
     const formData = Object.fromEntries(new FormData(form).entries());
     if (!formData.title || !formData.date || !formData.time) return;
 
+    // Validation for end time
+    if (formData.endTime && formData.endTime < formData.time) {
+      // In a real app, show a proper error message instead of an alert
+      console.error("Endzeit kann nicht vor der Startzeit liegen.");
+      return;
+    }
+
     const collectionPath = `users/${state.userId}/appointments`;
     if (state.editingItem) {
       await updateData(collectionPath, state.editingItem.id, formData);
@@ -94,7 +102,6 @@ export function setupAppointmentForm() {
     }
     state.editingItem = null;
     closeModal("form-modal");
-    // A proper event system would be better than this direct call
     document.dispatchEvent(new CustomEvent("dataChanged"));
   };
 }
@@ -216,7 +223,6 @@ export function setupRoutineItemForm() {
   form.onsubmit = (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
-    // Dispatch an event with the new item data
     document.dispatchEvent(new CustomEvent("addRoutineItem", { detail: data }));
     closeModal("form-modal");
   };
