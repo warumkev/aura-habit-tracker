@@ -2,7 +2,7 @@ import { switchView } from "../navigation.js";
 
 export function renderSettingsView(container) {
   container.innerHTML = `
-        <div data-view="settings" class="space-y-6">
+        <div data-view="settings" class="space-y-6 active">
             <h2 class="text-3xl font-bold">Einstellungen</h2>
             <div class="space-y-2">
                 <button data-target="settings-account" class="settings-link w-full flex justify-between items-center p-4 rounded-lg" style="background-color: var(--bg-secondary);">

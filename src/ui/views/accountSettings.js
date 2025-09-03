@@ -13,7 +13,7 @@ import { updateDataDoc } from "../../data/firestore.js";
 
 export function renderAccountSettingsView(container) {
   container.innerHTML = `
-        <div data-view="settings-account" class="space-y-6">
+        <div data-view="settings-account" class="space-y-6 active">
             <div class="flex items-center gap-4">
                 <button class="back-to-settings-btn text-2xl">&larr;</button>
                 <h2 class="text-3xl font-bold">Account</h2>

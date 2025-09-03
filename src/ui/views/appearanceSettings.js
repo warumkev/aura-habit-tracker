@@ -3,7 +3,7 @@ import { applyTheme, saveTheme } from "../theme.js";
 
 export function renderAppearanceSettingsView(container) {
   container.innerHTML = `
-        <div data-view="settings-appearance" class="space-y-6">
+        <div data-view="settings-appearance" class="space-y-6 active">
             <div class="flex items-center gap-4">
                 <button class="back-to-settings-btn text-2xl">&larr;</button>
                 <h2 class="text-3xl font-bold">Darstellung</h2>
